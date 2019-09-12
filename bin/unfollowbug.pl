@@ -87,12 +87,13 @@ unless ( $skip ) {
     $dbh->begin_work;
 
     foreach my $account (@queue_accounts) {
-      my $sql_handle = $dbh->prepare("INSERT INTO accounts (account_id, account_name, account_created, protected, verified, followers_count, statuses_count, queued, date_queued) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE protected=?, verified=?, followers_count=?, statuses_count=?, queued=?, date_queued=?");
+      my $sql_handle = $dbh->prepare("INSERT INTO accounts (account_id, account_name, account_created, protected, verified, friends_count, followers_count, statuses_count, queued, date_queued) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE protected=?, verified=?, friends_count=?, followers_count=?, statuses_count=?, queued=?, date_queued=?");
       $sql_handle->execute( $account->{'account_id'},
                             $account->{'account_name'},
                             $account->{'account_created'},
                             $account->{'protected'},
                             $account->{'verified'},
+                            $account->{'friends_count'},
                             $account->{'followers_count'},
                             $account->{'statuses_count'},
                             1,
@@ -100,6 +101,7 @@ unless ( $skip ) {
 
                             $account->{'protected'},
                             $account->{'verified'},
+                            $account->{'friends_count'},
                             $account->{'followers_count'},
                             $account->{'statuses_count'},
                             1,
@@ -108,12 +110,19 @@ unless ( $skip ) {
       $sql_handle->finish;
     }
 
+    ## Dequeue any protected accounts or accounts with 10000 or more friends
+    $sql_handle = $dbh->prepare("UPDATE accounts SET queued=0 WHERE protected=1 OR friends_count >= 10000");
+    $sql_handle->execute or print "$pid: Unable to get queue count: " . $sql_handle->errstr;
+    my ($queued) = $sql_handle->fetchrow_array();
+    $sql_handle->finish;
+
     $dbh->commit;
 
   }
   else {
     die "Can't retrieve followers for " . $bot->{account} . ", quitting.\n";
   }
+
 }
 
 
