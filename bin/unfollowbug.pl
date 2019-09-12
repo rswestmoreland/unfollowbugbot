@@ -41,6 +41,8 @@ my $bot      = $config->[0]->{bot}              or die "Config is missing bot in
 my $hostname = hostname();
 my $datetime = strftime('%Y-%m-%d %H:%M:%S', localtime());
 
+my $recipient_id = $bot->{master_id};
+
 
 my $lockpath = set_lock($settings->{temp_dir}, $lock_file);
 
@@ -56,77 +58,9 @@ my $api = connect_api($tokens);
 $api->{warning} = $settings->{api_warning} if defined $settings->{api_warning};
 
 
-## Let me know I'm starting
-my $note = "Starting new batch with pid " . $pid;
+## Poll queue and run check
 
-my $recipient_id = $bot->{master_id};
-$api->new_direct_messages_event($note, $recipient_id);
-
-
-## If there are any remaining checks in the queue, then skip refreshing queue
-my $sql_handle = $dbh->prepare("SELECT queued FROM accounts WHERE queued=1 LIMIT 1");
-$sql_handle->execute or print "$pid: Unable to query users: " . $sql_handle->errstr;
-my $skip = $sql_handle->rows;
-$sql_handle->finish;
-
-unless ( $skip ) {
-  my @queue_accounts;
-
-  # Get a list of accounts
-  # Retrieve followers from the bot's account
-  print "$pid: Getting followers for " . $bot->{account} . "\n";
-
-  
-  #if ( my @bot_followers = get_followers( $api, $bot->{account_id} ) ) {
-  ## TESTING
-  my @bot_followers;
-  push @bot_followers, $recipient_id;
-  if ( scalar @bot_followers ) {
-    push (@queue_accounts, get_user_details( $api, @bot_followers ));
-
-    $dbh->begin_work;
-
-    foreach my $account (@queue_accounts) {
-      my $sql_handle = $dbh->prepare("INSERT INTO accounts (account_id, account_name, account_created, protected, verified, friends_count, followers_count, statuses_count, queued, date_queued) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE protected=?, verified=?, friends_count=?, followers_count=?, statuses_count=?, queued=?, date_queued=?");
-      $sql_handle->execute( $account->{'account_id'},
-                            $account->{'account_name'},
-                            $account->{'account_created'},
-                            $account->{'protected'},
-                            $account->{'verified'},
-                            $account->{'friends_count'},
-                            $account->{'followers_count'},
-                            $account->{'statuses_count'},
-                            1,
-                            $datetime,
-
-                            $account->{'protected'},
-                            $account->{'verified'},
-                            $account->{'friends_count'},
-                            $account->{'followers_count'},
-                            $account->{'statuses_count'},
-                            1,
-                            $datetime,
-                          );
-      $sql_handle->finish;
-    }
-
-    ## Dequeue any protected accounts or accounts with 10000 or more friends
-    $sql_handle = $dbh->prepare("UPDATE accounts SET queued=0 WHERE protected=1 OR friends_count >= 10000");
-    $sql_handle->execute or print "$pid: Unable to get queue count: " . $sql_handle->errstr;
-    my ($queued) = $sql_handle->fetchrow_array();
-    $sql_handle->finish;
-
-    $dbh->commit;
-
-  }
-  else {
-    die "Can't retrieve followers for " . $bot->{account} . ", quitting.\n";
-  }
-
-}
-
-
-$sql_handle = $dbh->prepare("SELECT count(*) FROM accounts WHERE queued=1 AND checking=0");
+my $sql_handle = $dbh->prepare("SELECT count(*) FROM accounts WHERE queued=1 AND checking=0");
 $sql_handle->execute or print "$pid: Unable to get queue count: " . $sql_handle->errstr;
 my ($queued) = $sql_handle->fetchrow_array();
 $sql_handle->finish;
@@ -251,11 +185,10 @@ while ( $queued ) {
 }
 
 
-print "\n";
-
 
 
 ## Cleanup
+print "\n";
 $dbh->disconnect;
 unlink($lockpath);
 
