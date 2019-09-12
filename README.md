@@ -1,37 +1,23 @@
-## Welcome to GitHub Pages
+## Welcome to the Unfollow Bug Bot
 
-You can use the [editor on GitHub](https://github.com/rswestmoreland/unfollowbugbot/edit/master/README.md) to maintain and preview the content for your website in Markdown files.
+I provide awareness of when you lose twitter friends, in case you didn't mean to.
 
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
+### The Twitter Unfollow Bug is Real
 
-### Markdown
+This bot was created to address a long outstanding bug in how Twitter keeps track of your **friends** (the accounts you follow).  Occasionally you'll discover that you are no longer following someone that you thought you were already following.
 
-Markdown is a lightweight and easy-to-use syntax for styling your writing. It includes conventions for
+Twitter uses a distributed infrastructure with caching.  This best effort / eventual consistency technology sometimes makes a mistake, resulting in an incomplete friends list, and it may be awhile before you notice.
 
-```markdown
-Syntax highlighted code block
 
-# Header 1
-## Header 2
-### Header 3
+## How to Use
 
-- Bulleted
-- List
+By following **[@unfollowbugbot](https://twitter.com/unfollowbugbot)** on Twitter, you are enrolled in DM notifications of any unfollows.  If you no longer want to receive these notifications, then simply unfollow me.
 
-1. Numbered
-2. List
+**Limitations**
+- I will not work if your account is Protected, because I won't be able to DM you
+- I skip accounts with 10,000+ friends
+- If you have 50 or more unfollows in one batch, I just summarize the count
+- I'm using the same API that might be responsible for the bug, so this is best effort and isn't perfect
+- The bug might cause you to unfollow me, oops
+- Twitter has really aggressive Rate Limiting, so the time it takes to run a check will vary
 
-**Bold** and _Italic_ and `Code` text
-
-[Link](url) and ![Image](src)
-```
-
-For more details see [GitHub Flavored Markdown](https://guides.github.com/features/mastering-markdown/).
-
-### Jekyll Themes
-
-Your Pages site will use the layout and styles from the Jekyll theme you have selected in your [repository settings](https://github.com/rswestmoreland/unfollowbugbot/settings). The name of this theme is saved in the Jekyll `_config.yml` configuration file.
-
-### Support or Contact
-
-Having trouble with Pages? Check out our [documentation](https://help.github.com/categories/github-pages-basics/) or [contact support](https://github.com/contact) and we’ll help you sort it out.
