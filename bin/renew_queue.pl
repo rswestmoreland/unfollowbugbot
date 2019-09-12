@@ -17,12 +17,13 @@ use DBI;
 use DBD::mysql;
 use Twitter::API;
 
+use lib '/opt/twitter/lib';
 use BotFramework;
 
 #####################################################
 
-my $config_file    = '/opt/twitter/bot.config';
-my $lock_file      = 'unfollowbug.lock';
+my $config_file    = '/etc/unfollowbug/bot.config';
+my $lock_file      = 'renew_queue.lock';
 
 #####################################################
 
