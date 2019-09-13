@@ -282,6 +282,7 @@ sub get_user_details {
                                 account_created => $account_created,
                                 protected       => $user->{'protected'} ? 1 : 0,
                                 verified        => $user->{'verified'} ? 1 : 0,
+                                friends_count   => $user->{'friends_count'} // 0,
                                 followers_count => $user->{'followers_count'} // 0,
                                 statuses_count  => $user->{'statuses_count'} // 0,
                               };
