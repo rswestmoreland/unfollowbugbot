@@ -23,7 +23,7 @@ use BotFramework;
 #####################################################
 
 my $config_file    = '/etc/unfollowbug/bot.config';
-my $lock_file      = 'unfollowbug.lock';
+my $lock_file      = 'track_friends.lock';
 
 #####################################################
 
@@ -138,37 +138,6 @@ while ( $queued ) {
       $sql_handle2->finish;
     }
     
-
-    ## Determine unfollows and let account know
-    print "$pid: Comparing friend lists for $account_name...\n";
-    my @all_unfollows = get_unfollows( $dbh, $account_id );
-    my $all_unfollows_count = scalar @all_unfollows;
-    print "$pid: Total unfollows for $account_name is $all_unfollows_count\n";
-
-    if ( $all_unfollows_count > 0 ) {
-
-      my $intro = build_intro($account_name);
-
-      my $message;
-      if ( $all_unfollows_count <= 50 ) {
-        my @all_names = get_names($api, @all_unfollows);
-        if ( scalar @all_names > 0 && scalar @all_names <= 50 ) {
-          $message = "$intro:  " . join (' ', @all_names);
-        }
-      }
-      else {
-        $message = "$intro $all_unfollows_count friends";
-      }
-
-      ## TESTING FIRST, uncomment later
-      ###eval { $api->new_direct_messages_event($message, $account_id); };
-
-      # TESTING
-      eval { $api->new_direct_messages_event("$pid: $message", $recipient_id); };
-      print "Sent message:\n$message\n";
-    }
-
-
 
     ## We have finished checking the account, remove from queue
     $sql_handle2 = $dbh->prepare("UPDATE accounts SET queued=0, checking=0 WHERE account_id=?");

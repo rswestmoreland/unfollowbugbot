@@ -94,7 +94,26 @@ sub connect_api {
   );
 
   unless ( my $verify = $api->verify_credentials ) {
-    die "Error verifying api access, quitting.\n";
+    die "Error verifying api access for user, quitting.\n";
+  }
+
+  return ($api);
+}
+
+sub connect_api_app {
+  my ($tokens) = @_;
+
+  my $api = Twitter::API->new_with_traits(
+    traits              => [ qw/ApiMethods NormalizeBooleans DecodeHtmlEntities RetryOnError AppAuth/ ],
+    consumer_key        => $tokens->{consumer_key},
+    consumer_secret     => $tokens->{consumer_secret},
+  );
+
+  if ( my $token = $api->oauth2_token ) {
+    $api->access_token($token);
+  }
+  else {
+    die "Error requesting bearer token for api, quitting.\n";
   }
 
   return ($api);
@@ -178,8 +197,10 @@ sub get_friends {
          }
       }
 
-      push @friends, @{$result->{ids}};
-      last RETRY;
+      if ( $result ) {
+        push @friends, @{$result->{ids}};
+        last RETRY;
+      }
     }
 
   }
@@ -213,8 +234,10 @@ sub get_followers {
          }
       }
 
-      push @followers, @{$result->{ids}};
-      last RETRY;
+      if ( $result ) {
+        push @followers, @{$result->{ids}};
+        last RETRY;
+      }
     }
 
   }
@@ -282,6 +305,7 @@ sub get_user_details {
                                 account_created => $account_created,
                                 protected       => $user->{'protected'} ? 1 : 0,
                                 verified        => $user->{'verified'} ? 1 : 0,
+                                friends_count   => $user->{'friends_count'} // 0,
                                 followers_count => $user->{'followers_count'} // 0,
                                 statuses_count  => $user->{'statuses_count'} // 0,
                               };
