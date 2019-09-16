@@ -183,7 +183,7 @@ sub get_friends {
 
     check_rate_limits($api, 'friends');
 
-    RETRY: while ( ! $retry ) {
+    RETRY: while ( ! $result ) {
 
       eval { $result = $user_id ? $api->friends_ids({ user_id => $user_id, cursor => $cursor, stringify_ids => 1 })
                                 : $api->friends_ids({ cursor => $cursor, stringify_ids => 1 });
