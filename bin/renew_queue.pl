@@ -66,8 +66,10 @@ $sql_handle->finish;
 
 if ( $remaining ) {
   ## Let me know how many are remaining
-  my $note = "There are $remaining accounts left in the queue";
+  my $note = "Queue has $remaining pending entries";
   $api->new_direct_messages_event($note, $recipient_id);
+
+  print "$pid: $note, skipping.\n";
 }
 else {
   ## Let me know I'm starting
@@ -136,9 +138,6 @@ else {
     die "Can't retrieve followers for " . $bot->{account} . ", quitting.\n";
   }
 
-}
-else {
-  print "$pid: Queue has pending entries, skipping.\n";
 }
 
 
