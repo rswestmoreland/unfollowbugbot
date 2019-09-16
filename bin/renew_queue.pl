@@ -46,7 +46,7 @@ my $recipient_id = $bot->{master_id};
 
 my $lockpath = set_lock($settings->{temp_dir}, $lock_file);
 
-## Make sure host's time matched twitter's time
+## Make sure host's time matches twitter's time
 sync_time();
 
 
@@ -58,18 +58,25 @@ my $api = connect_api($tokens);
 $api->{warning} = $settings->{api_warning} if defined $settings->{api_warning};
 
 
-## Let me know I'm starting
-my $note = "Starting new batch with pid " . $pid;
-$api->new_direct_messages_event($note, $recipient_id);
-
-
 ## If there are any remaining checks in the queue, then skip refreshing queue
-my $sql_handle = $dbh->prepare("SELECT queued FROM accounts WHERE queued=1 LIMIT 1");
+my $sql_handle = $dbh->prepare("SELECT count(*) FROM accounts WHERE queued=1");
 $sql_handle->execute or print "$pid: Unable to query users: " . $sql_handle->errstr;
-my $skip = $sql_handle->rows;
+my ($remaining) = $sql_handle->fetchrow_array();
 $sql_handle->finish;
 
-unless ( $skip ) {
+if ( $remaining ) {
+  ## Let me know how many are remaining
+  my $note = "Queue has $remaining pending entries";
+  $api->new_direct_messages_event($note, $recipient_id);
+
+  print "$pid: $note, skipping.\n";
+}
+else {
+  ## Let me know I'm starting
+  my $note = "Starting new batch with pid " . $pid;
+  $api->new_direct_messages_event($note, $recipient_id);
+
+
   my @queue_accounts;
 
   # Get a list of accounts
@@ -116,14 +123,21 @@ unless ( $skip ) {
     }
 
     print "$pid: Finished reloading queue.\n";
+
+    $sql_handle = $dbh->prepare("SELECT count(*) FROM accounts WHERE queued=1");
+    $sql_handle->execute or print "$pid: Unable to query users: " . $sql_handle->errstr;
+    my ($new_queue) = $sql_handle->fetchrow_array();
+    $sql_handle->finish;
+
+    ## Let me know how many are to be processed
+    my $note = "The queue has been reloaded with $new_queue accounts";
+    $api->new_direct_messages_event($note, $recipient_id);
+
   }
   else {
     die "Can't retrieve followers for " . $bot->{account} . ", quitting.\n";
   }
 
-}
-else {
-  print "$pid: Queue has pending entries, skipping.\n";
 }
 
 

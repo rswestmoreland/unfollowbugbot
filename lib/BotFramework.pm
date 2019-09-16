@@ -129,7 +129,7 @@ sub check_rate_limits {
   ## Sometimes twitter returns blank results when looking up rate limits, have to try again until fetched
   ## Rate limit lookups also has its own rate limit, so try to intercept that too
   my $resources;
-  while ( ! keys %{$resources} ) {
+  while ( ! defined $resources && ! keys %{$resources} ) {
 
     eval { $resources = $api->rate_limit_status->{'resources'}; };
 
@@ -177,11 +177,13 @@ sub get_friends {
   my ($api, $user_id) = @_;
   my @friends;
 
+  check_rate_limits($api, 'application');
+
   for ( my $cursor = -1, my $result; $cursor; $cursor = $result->{next_cursor} ) {
 
-    RETRY: while ( 1 ) {
+    check_rate_limits($api, 'friends');
 
-      check_rate_limits($api, 'friends');
+    RETRY: while ( ! $retry ) {
 
       eval { $result = $user_id ? $api->friends_ids({ user_id => $user_id, cursor => $cursor, stringify_ids => 1 })
                                 : $api->friends_ids({ cursor => $cursor, stringify_ids => 1 });
@@ -189,6 +191,7 @@ sub get_friends {
 
       if ( is_twitter_api_error($_) ) {
          if ( $_->twitter_error_code == 429 ) {
+           undef $result;
            next RETRY;
          }
          else {
@@ -197,11 +200,9 @@ sub get_friends {
          }
       }
 
-      if ( $result ) {
-        push @friends, @{$result->{ids}};
-        last RETRY;
-      }
     }
+
+    push @friends, @{$result->{ids}};
 
   }
 
@@ -214,11 +215,13 @@ sub get_followers {
   my ($api, $user_id) = @_;
   my @followers;
 
+  check_rate_limits($api, 'application');
+
   for ( my $cursor = -1, my $result; $cursor; $cursor = $result->{next_cursor} ) {
 
-    RETRY: while ( 1 ) {
+    check_rate_limits($api, 'followers');
 
-      check_rate_limits($api, 'followers');
+    RETRY: while ( ! $retry ) {
 
       eval { $result = $user_id ? $api->followers_ids({ user_id => $user_id, cursor => $cursor, stringify_ids => 1 })
                                 : $api->followers_ids({ cursor => $cursor, stringify_ids => 1 });
@@ -226,6 +229,7 @@ sub get_followers {
 
       if ( is_twitter_api_error($_) ) {
          if ( $_->twitter_error_code == 429 ) {
+           undef $result;
            next RETRY;
          }
          else {
@@ -234,11 +238,9 @@ sub get_followers {
          }
       }
 
-      if ( $result ) {
-        push @followers, @{$result->{ids}};
-        last RETRY;
-      }
     }
+
+    push @followers, @{$result->{ids}};
 
   }
 
@@ -251,10 +253,10 @@ sub get_names {
   my ($api, @ids) = @_;
   my @names;
 
-  check_rate_limits($api, 'users');
+  check_rate_limits($api, 'application');
 
   while ( scalar @ids > 0 ) {
-    check_rate_limits($api);
+    check_rate_limits($api, 'users');
 
     my @subset_ids = splice @ids, 0, 100;
     my $users;
@@ -281,6 +283,8 @@ sub get_names {
 sub get_user_details {
   my ($api, @ids) = @_;
   my @user_details;
+
+  check_rate_limits($api, 'application');
 
   while ( scalar @ids > 0 ) {
     check_rate_limits($api, 'users');
