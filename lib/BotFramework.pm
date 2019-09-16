@@ -183,23 +183,27 @@ sub get_friends {
 
     check_rate_limits($api, 'friends');
 
-    RETRY: while ( ! $result ) {
+    eval { $result = $user_id ? $api->friends_ids({ user_id => $user_id, cursor => $cursor, stringify_ids => 1 })
+                              : $api->friends_ids({ cursor => $cursor, stringify_ids => 1 });
+         };
+
+    RETRY: while ( 1 ) {
+
+      unless ( $@ && is_twitter_api_error($_) && $_->twitter_error_code == 429 ) {
+        last RETRY;
+      }
+
+      check_rate_limits($api, 'friends');
 
       eval { $result = $user_id ? $api->friends_ids({ user_id => $user_id, cursor => $cursor, stringify_ids => 1 })
                                 : $api->friends_ids({ cursor => $cursor, stringify_ids => 1 });
            };
 
-      if ( is_twitter_api_error($_) ) {
-         if ( $_->twitter_error_code == 429 ) {
-           undef $result;
-           next RETRY;
-         }
-         else {
-           print "$pid: Retrieval had failures: $@\n";
-           return;
-         }
-      }
+    }
 
+    if ( $@ ) {
+      print "$pid: Retrieval had failures: $@\n";
+      return;
     }
 
     push @friends, @{$result->{ids}};
@@ -221,23 +225,27 @@ sub get_followers {
 
     check_rate_limits($api, 'followers');
 
-    RETRY: while ( ! $result ) {
+    eval { $result = $user_id ? $api->followers_ids({ user_id => $user_id, cursor => $cursor, stringify_ids => 1 })
+                              : $api->followers_ids({ cursor => $cursor, stringify_ids => 1 });
+         };
+
+    RETRY: while ( 1 ) {
+
+      unless ( $@ && is_twitter_api_error($_) && $_->twitter_error_code == 429 ) {
+        last RETRY;
+      }
+
+      check_rate_limits($api, 'followers');
 
       eval { $result = $user_id ? $api->followers_ids({ user_id => $user_id, cursor => $cursor, stringify_ids => 1 })
                                 : $api->followers_ids({ cursor => $cursor, stringify_ids => 1 });
            };
 
-      if ( is_twitter_api_error($_) ) {
-         if ( $_->twitter_error_code == 429 ) {
-           undef $result;
-           next RETRY;
-         }
-         else {
-           print "$pid: Retrieval had failures: $@\n";
-           return;
-         }
-      }
+    }
 
+    if ( $@ ) {
+      print "$pid: Retrieval had failures: $@\n";
+      return;
     }
 
     push @followers, @{$result->{ids}};
