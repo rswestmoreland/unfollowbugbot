@@ -203,10 +203,12 @@ sub get_friends {
 
     if ( $@ ) {
       print "$pid: Retrieval had failures: $@\n";
-      return;
+      @friends = ();
+      return @friends;
     }
-
-    push @friends, @{$result->{ids}};
+    else {
+      push @friends, @{$result->{ids}};
+    }
 
   }
 
@@ -245,10 +247,12 @@ sub get_followers {
 
     if ( $@ ) {
       print "$pid: Retrieval had failures: $@\n";
-      return;
+      @followers = ();
+      return @followers;
     }
-
-    push @followers, @{$result->{ids}};
+    else {
+      push @followers, @{$result->{ids}};
+    }
 
   }
 
