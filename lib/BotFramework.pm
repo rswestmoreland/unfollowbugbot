@@ -221,7 +221,7 @@ sub get_followers {
 
     check_rate_limits($api, 'followers');
 
-    RETRY: while ( ! $retry ) {
+    RETRY: while ( ! $result ) {
 
       eval { $result = $user_id ? $api->followers_ids({ user_id => $user_id, cursor => $cursor, stringify_ids => 1 })
                                 : $api->followers_ids({ cursor => $cursor, stringify_ids => 1 });
