@@ -38,7 +38,7 @@ my $settings = $config->[0]->{settings}         or die "Config is missing settin
 my $dbauth   = $config->[0]->{db}               or die "Config is missing database params\n";
 my $tokens   = $config->[0]->{tokens}           or die "Config is missing API tokens\n";
 my $bot      = $config->[0]->{bot}              or die "Config is missing bot info\n";
-my $hostname = hostname();
+my $hostname = hostname() . '.app';
 my $datetime = strftime('%Y-%m-%d %H:%M:%S', localtime());
 
 my $recipient_id = $bot->{master_id};
