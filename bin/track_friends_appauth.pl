@@ -60,8 +60,8 @@ $api->{warning} = $settings->{api_warning} if defined $settings->{api_warning};
 
 ## Poll queue and run check
 
-my $sql_handle = $dbh->prepare("SELECT count(*) FROM accounts WHERE queued=1 AND checking=0");
-$sql_handle->execute or print "$pid: Unable to get queue count: " . $sql_handle->errstr;
+my $sql_handle = $dbh->prepare("SELECT count(*) FROM accounts WHERE (queued=1 AND checking=0) OR (queued=1 AND checking=1 AND checked_by=?)");
+$sql_handle->execute($hostname) or print "$pid: Unable to get queue count: " . $sql_handle->errstr;
 my ($queued) = $sql_handle->fetchrow_array();
 $sql_handle->finish;
 
