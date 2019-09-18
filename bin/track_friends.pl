@@ -57,7 +57,6 @@ my $dbh = connect_db($dbauth);
 my $api = connect_api($tokens);
 $api->{warning} = $settings->{api_warning} if defined $settings->{api_warning};
 
-
 ## Poll queue and run check
 
 my $sql_handle = $dbh->prepare("SELECT count(*) FROM accounts WHERE (queued=1 AND checking=0) OR (queued=1 AND checking=1 AND checked_by=?)");
