@@ -129,16 +129,18 @@ sub check_rate_limits {
   ## Sometimes twitter returns blank results when looking up rate limits, have to try again until fetched
   ## Rate limit lookups also has its own rate limit, so try to intercept that too
   my $resources;
-  while ( ! defined $resources && ! keys %{$resources} ) {
+  RETRY: while ( 1 ) {
 
     eval { $resources = $api->rate_limit_status->{'resources'}; };
+    last RETRY if defined $resources && keys %{$resources};
 
     if ( is_twitter_api_error($_) && $_->twitter_error_code == 429 ) {
       print "$pid: API limit reached, sleeping for 60 seconds\n" if $api->{warning};
-      sleep 59;
+      sleep 60;
     }
-
-    sleep 1;
+    else {
+      sleep 1;
+    }
 
   }
 
@@ -162,10 +164,14 @@ sub check_rate_limits {
     },
   };
 
-  if ( $rates->{$resource}->{'remain'} == 0 ) {
-    my $expire = $rates->{$resource}->{'reset'} - time();
-    print "$pid: API limit reached, sleeping for $expire seconds\n" if $api->{warning};
-    sleep ( $expire + 1 );
+  if ( my $remain = $rates->{$resource}->{'remain'} ) {
+    if ( $remain == 0 ) {
+      if ( my $reset = $rates->{$resource}->{'reset'} ) {
+        my $expire = $reset - time();
+        print "$pid: API limit reached, sleeping for $expire seconds\n" if $api->{warning};
+        sleep ( $expire + 1 );
+      }
+    }
   }
 
 
