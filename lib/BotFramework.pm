@@ -132,15 +132,18 @@ sub check_rate_limits {
   RETRY: while ( 1 ) {
 
     eval { $resources = $api->rate_limit_status->{'resources'}; };
-    last RETRY if defined $resources && keys %{$resources};
 
-    if ( is_twitter_api_error($_) && $_->twitter_error_code == 429 ) {
-      print "$pid: API limit reached, sleeping for 60 seconds\n" if $api->{warning};
-      sleep 60;
+    if ( $@ ) {
+      if ( is_twitter_api_error($_) && $_->twitter_error_code == 429 ) {
+        print "$pid: API limit reached, sleeping for 60 seconds\n" if $api->{warning};
+        sleep 60;
+      }
+      else {
+        sleep 1;
+      }
     }
-    else {
-      sleep 1;
-    }
+      
+    last RETRY if defined $resources && keys %{$resources};
 
   }
 
