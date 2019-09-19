@@ -15,7 +15,6 @@ use Exporter::Auto;
 use POSIX qw(strftime);
 use Time::Strptime qw(strptime);
 use Twitter::API;
-use Twitter::API::Util 'is_twitter_api_error';
 
 our $pid = $$;
 
@@ -134,7 +133,7 @@ sub check_rate_limits {
     eval { $resources = $api->rate_limit_status->{'resources'}; };
 
     if ( $@ ) {
-      if ( is_twitter_api_error($_) && $_->twitter_error_code == 429 ) {
+      if ( $@ =~ /^Rate limit exceeded/ ) {
         print "$pid: API limit reached, sleeping for 60 seconds\n" if $api->{warning};
         sleep 60;
       }
@@ -198,26 +197,27 @@ sub get_friends {
 
     RETRY: while ( 1 ) {
 
-      unless ( $@ && is_twitter_api_error($_) && $_->twitter_error_code == 429 ) {
+      if ( $@ ) {
+        if ( $@ =~ /^Rate limit exceeded/ ) {
+          check_rate_limits($api, 'friends');
+
+          eval { $result = $user_id ? $api->friends_ids({ user_id => $user_id, cursor => $cursor, stringify_ids => 1 })
+                                    : $api->friends_ids({ cursor => $cursor, stringify_ids => 1 });
+               };
+        }
+        else {
+          print "$pid: Retrieval had failures: $@\n";
+          @friends = ();
+          return @friends;
+        }
+      }
+      else {
         last RETRY;
       }
 
-      check_rate_limits($api, 'friends');
-
-      eval { $result = $user_id ? $api->friends_ids({ user_id => $user_id, cursor => $cursor, stringify_ids => 1 })
-                                : $api->friends_ids({ cursor => $cursor, stringify_ids => 1 });
-           };
-
     }
 
-    if ( $@ ) {
-      print "$pid: Retrieval had failures: $@\n";
-      @friends = ();
-      return @friends;
-    }
-    else {
-      push @friends, @{$result->{ids}};
-    }
+    push @friends, @{$result->{ids}};
 
   }
 
@@ -242,26 +242,27 @@ sub get_followers {
 
     RETRY: while ( 1 ) {
 
-      unless ( $@ && is_twitter_api_error($_) && $_->twitter_error_code == 429 ) {
+      if ( $@ ) {
+        if ( $@ =~ /^Rate limit exceeded/ ) {
+          check_rate_limits($api, 'followers');
+
+          eval { $result = $user_id ? $api->followers_ids({ user_id => $user_id, cursor => $cursor, stringify_ids => 1 })
+                                    : $api->followers_ids({ cursor => $cursor, stringify_ids => 1 });
+               };
+        }
+        else {
+          print "$pid: Retrieval had failures: $@\n";
+          @followers = ();
+          return @followers;
+        }
+      }
+      else {
         last RETRY;
       }
 
-      check_rate_limits($api, 'followers');
-
-      eval { $result = $user_id ? $api->followers_ids({ user_id => $user_id, cursor => $cursor, stringify_ids => 1 })
-                                : $api->followers_ids({ cursor => $cursor, stringify_ids => 1 });
-           };
-
     }
 
-    if ( $@ ) {
-      print "$pid: Retrieval had failures: $@\n";
-      @followers = ();
-      return @followers;
-    }
-    else {
-      push @followers, @{$result->{ids}};
-    }
+    push @followers, @{$result->{ids}};
 
   }
 
