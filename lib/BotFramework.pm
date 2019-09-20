@@ -121,28 +121,32 @@ sub connect_api_app {
 
 # Retrieve current rate limits
 sub check_rate_limits {
-  my ($api, $resource) = @_;
+  my ($api, $resource, $auth) = @_;
 
   $resource //= 'application';
+  $auth //= 1;
+  my $get_resources = $resource eq 'application' ? $resource : "application,$resource";
 
   ## Sometimes twitter returns blank results when looking up rate limits, have to try again until fetched
   ## Rate limit lookups also has its own rate limit, so try to intercept that too
+
   my $resources;
   RETRY: while ( 1 ) {
 
-    eval { $resources = $api->rate_limit_status->{'resources'}; };
+    eval { $resources = $api->rate_limit_status({ authenticate => $auth, resources => $get_resources })->{'resources'}; };
+
+    last RETRY if defined $resources && keys %{$resources};
 
     if ( $@ ) {
       if ( $@ =~ /^Rate limit exceeded/ ) {
-        print "$pid: API limit reached, sleeping for 60 seconds\n" if $api->{warning};
+        print "$pid: Rate limit exceeded, sleeping for 60 seconds\n" if $api->{warning};
         sleep 60;
-      }
-      else {
-        sleep 1;
+        next RETRY;
       }
     }
-      
-    last RETRY if defined $resources && keys %{$resources};
+
+    print "$pid: Error getting status, retrying...\n";      
+    sleep 1;
 
   }
 
@@ -166,16 +170,25 @@ sub check_rate_limits {
     },
   };
 
-  if ( my $remain = $rates->{$resource}->{'remain'} ) {
-    if ( $remain == 0 ) {
-      if ( my $reset = $rates->{$resource}->{'reset'} ) {
-        my $expire = $reset - time();
-        print "$pid: API limit reached, sleeping for $expire seconds\n" if $api->{warning};
-        sleep ( $expire + 1 );
-      }
+  my $reset = 0;
+
+  if ( $rates->{$resource}->{'remain'} == 0 ) {
+    $reset = $rates->{$resource}->{'reset'};
+  }
+
+  if ( $rates->{'application'}->{'remain'} == 0 ) {
+    if ( $rates->{'application'}->{'reset'} > $reset ) {
+      $reset = $rates->{'application'}->{'reset'};
+      $resource = 'application';
     }
   }
 
+  my $expire = $reset - time();
+
+  if ( $expire > 0 ) {
+    print "$pid: API limit reached for $resource, sleeping for $expire seconds\n" if $api->{warning};
+    sleep ( $expire + 1 );
+  }
 
 }
 
@@ -185,35 +198,27 @@ sub get_friends {
   my ($api, $user_id) = @_;
   my @friends;
 
-  check_rate_limits($api, 'application');
+  check_rate_limits($api, 'application', 0);
 
   for ( my $cursor = -1, my $result; $cursor; $cursor = $result->{next_cursor} ) {
 
-    check_rate_limits($api, 'friends');
-
-    eval { $result = $user_id ? $api->friends_ids({ user_id => $user_id, cursor => $cursor, stringify_ids => 1 })
-                              : $api->friends_ids({ cursor => $cursor, stringify_ids => 1 });
-         };
-
     RETRY: while ( 1 ) {
 
-      if ( $@ ) {
-        if ( $@ =~ /^Rate limit exceeded/ ) {
-          check_rate_limits($api, 'friends');
+      check_rate_limits($api, 'friends');
 
-          eval { $result = $user_id ? $api->friends_ids({ user_id => $user_id, cursor => $cursor, stringify_ids => 1 })
-                                    : $api->friends_ids({ cursor => $cursor, stringify_ids => 1 });
-               };
-        }
-        else {
-          print "$pid: Retrieval had failures: $@\n";
-          @friends = ();
-          return @friends;
-        }
+      eval { $result = $user_id ? $api->friends_ids({ user_id => $user_id, cursor => $cursor, stringify_ids => 1 })
+                                : $api->friends_ids({ cursor => $cursor, stringify_ids => 1 });
+      };
+
+      if ( $@ ) {
+        next RETRY if $@ =~ /^Rate limit exceeded/;
+
+        print "$pid: Retrieval had failures: $@\n";
+        @friends = ();
+        return @friends;
       }
-      else {
-        last RETRY;
-      }
+
+      last RETRY;
 
     }
 
@@ -230,35 +235,27 @@ sub get_followers {
   my ($api, $user_id) = @_;
   my @followers;
 
-  check_rate_limits($api, 'application');
+  check_rate_limits($api, 'application', 0);
 
   for ( my $cursor = -1, my $result; $cursor; $cursor = $result->{next_cursor} ) {
 
-    check_rate_limits($api, 'followers');
-
-    eval { $result = $user_id ? $api->followers_ids({ user_id => $user_id, cursor => $cursor, stringify_ids => 1 })
-                              : $api->followers_ids({ cursor => $cursor, stringify_ids => 1 });
-         };
-
     RETRY: while ( 1 ) {
 
-      if ( $@ ) {
-        if ( $@ =~ /^Rate limit exceeded/ ) {
-          check_rate_limits($api, 'followers');
+      check_rate_limits($api, 'followers');
 
-          eval { $result = $user_id ? $api->followers_ids({ user_id => $user_id, cursor => $cursor, stringify_ids => 1 })
-                                    : $api->followers_ids({ cursor => $cursor, stringify_ids => 1 });
-               };
-        }
-        else {
-          print "$pid: Retrieval had failures: $@\n";
-          @followers = ();
-          return @followers;
-        }
+      eval { $result = $user_id ? $api->followers_ids({ user_id => $user_id, cursor => $cursor, stringify_ids => 1 })
+                                : $api->followers_ids({ cursor => $cursor, stringify_ids => 1 });
+      };
+
+      if ( $@ ) {
+        next RETRY if $@ =~ /^Rate limit exceeded/;
+
+        print "$pid: Retrieval had failures: $@\n";
+        @followers = ();
+        return @followers;
       }
-      else {
-        last RETRY;
-      }
+
+      last RETRY;
 
     }
 
@@ -275,7 +272,7 @@ sub get_names {
   my ($api, @ids) = @_;
   my @names;
 
-  check_rate_limits($api, 'application');
+  check_rate_limits($api, 'application', 0);
 
   while ( scalar @ids > 0 ) {
     check_rate_limits($api, 'users');
@@ -306,7 +303,7 @@ sub get_user_details {
   my ($api, @ids) = @_;
   my @user_details;
 
-  check_rate_limits($api, 'application');
+  check_rate_limits($api, 'application', 0);
 
   while ( scalar @ids > 0 ) {
     check_rate_limits($api, 'users');
