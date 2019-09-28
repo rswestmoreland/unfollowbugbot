@@ -72,6 +72,8 @@ if ( $confirmed ) {
   $sql_handle = $dbh->prepare("SELECT a.account_id, account_name FROM accounts a LEFT JOIN friends f ON a.account_id=f.account_id WHERE confirmed=1 AND reported=0 GROUP BY a.account_id, account_name ORDER BY account_name");
   $sql_handle->execute or print "$pid: Unable to query account: " . $sql_handle->errstr;
 
+  my @summary;
+
   while ( my ($account_id, $account_name) = $sql_handle->fetchrow_array() ) {
 
     ## Determine unfollows and let account know
@@ -87,8 +89,11 @@ if ( $confirmed ) {
       my $message;
       if ( $all_unfollows_count <= 50 ) {
         my @all_names = get_names($api, @all_unfollows);
-        if ( scalar @all_names > 0 && scalar @all_names <= 50 ) {
+        if ( scalar @all_names > 0 ) {
           $message = "$intro:  " . join (' ', @all_names);
+        }
+        else {
+          print "$pid: Unfollows may be deleted accounts\n";
         }
       }
       else {
@@ -96,7 +101,9 @@ if ( $confirmed ) {
       }
 
       ## Send DM to affected account
-      eval { $api->new_direct_messages_event($message, $account_id); };
+      if ( $message ) {
+        eval { $api->new_direct_messages_event($message, $account_id); };
+      }
 
       unless ( $@ ) {
         my $friends = join(',', @all_unfollows);
@@ -106,14 +113,16 @@ if ( $confirmed ) {
         $sql_handle2->execute($account_id, $datetime) or print "$pid: Unable to set reported: " . $sql_handle2->errstr;
         $sql_handle2->finish;
 
-        ## Send DM to bot master for troubleshooting
-        eval { $api->new_direct_messages_event("$pid: $message", $recipient_id); };
         print "$pid: Sent message:\n$message\n";
+        push(@summary, "$account_name: $all_unfollows_count");
       }
 
     }
 
   }
+
+  ## Send DM to bot master for metrics
+  eval { $api->new_direct_messages_event(join("\n", 'Unfollows notified:', @summary), $recipient_id); };
 
   $sql_handle->finish;
 
