@@ -17,8 +17,8 @@ use Time::Strptime qw(strptime);
 use Twitter::API;
 
 our $pid = $$;
-
 our $bearer_token;
+our $rate_limit_start = 10;
 
 
 sub set_lock {
@@ -135,6 +135,7 @@ sub check_rate_limits {
   ## Rate limit lookups also has its own rate limit, so try to intercept that too
 
   my $resources;
+  my $retry_wait = $rate_limit_start;
   RETRY: while ( 1 ) {
 
     eval { $resources = $api->rate_limit_status({ authenticate => $auth, resources => $get_resources })->{'resources'}; };
@@ -142,9 +143,10 @@ sub check_rate_limits {
     last RETRY if defined $resources && keys %{$resources};
 
     if ( $@ ) {
-      if ( $@ =~ /^Rate limit exceeded/ ) {
-        print "$pid: Rate limit exceeded, sleeping for 60 seconds\n" if $api->{warning};
-        sleep 60;
+      if ( $@ =~ /^(Rate limit exceeded|420 Enhance Your Calm)/ ) {
+        print "$pid: $1, sleeping for $retry_wait seconds\n" if $api->{warning};
+        sleep $retry_wait;
+        $retry_wait = int($retry_wait * 2);
         next RETRY;
       }
     }
@@ -175,6 +177,10 @@ sub check_rate_limits {
     users => {
       remain => $resources->{'users'}->{'/users/lookup'}->{'remaining'},
       reset  => $resources->{'users'}->{'/users/lookup'}->{'reset'},
+    },
+    direct_messages => {
+      remain => $resources->{'direct_messages'}->{'/direct_messages/events'}->{'/direct_messages/events/new'}->{'remaining'},
+      reset  => $resources->{'direct_messages'}->{'/direct_messages/events'}->{'/direct_messages/events/new'}->{'reset'},
     },
   };
 
@@ -303,6 +309,11 @@ sub confirm_unfollow {
 
   }
 
+  if ( $result->{source}->{blocked_by} ) {
+    print "$pid: " . $result->{source}->{screen_name} . " is blocked by " . $result->{source}->{screen_name} . "\n";
+    return 'blocked';
+  }
+
   return $result->{source}->{following} ? 0 : 1;
 }
 
@@ -315,7 +326,7 @@ sub send_message {
 
   RETRY: while ( 1 ) {
 
-    check_rate_limits($api, 'application');
+    check_rate_limits($api, 'direct_messages');
 
     if ( $bearer_token ) {
       eval { $api->new_direct_messages_event($message, $user_id, { -token => $bearer_token } ); };
@@ -325,15 +336,10 @@ sub send_message {
     }
 
     if ( $@ ) {
-      if ( $@ =~ /^(Rate limit exceeded|420 Enhance Your Calm)/ ) {
-        print "$pid: Rate limit exceeded, sleeping for 60 seconds\n" if $api->{warning};
-        sleep 60;
-        next RETRY;
-      }
-      else {
-        print "$pid: Direct message had errors: $@\n";
-        return 0;
-      }
+      next RETRY if $@ =~ /^Rate limit exceeded/;
+
+      print "$pid: Direct message had errors: $@\n";
+      return 0;
     }
 
     last RETRY;
