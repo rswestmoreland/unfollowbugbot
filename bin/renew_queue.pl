@@ -99,10 +99,11 @@ else {
         $queued = 0;
       }
 
-      $sql_handle = $dbh->prepare("INSERT INTO accounts (account_id, account_name, account_created, protected, verified, friends_count, followers_count, statuses_count, queued, date_queued) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE protected=?, verified=?, friends_count=?, followers_count=?, statuses_count=?, queued=?, date_queued=?");
+      $sql_handle = $dbh->prepare("INSERT INTO accounts (account_id, account_name, account_created, description, protected, verified, friends_count, followers_count, statuses_count, queued, date_queued) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE account_name=?, description=?, protected=?, verified=?, friends_count=?, followers_count=?, statuses_count=?, queued=?, date_queued=?");
       $sql_handle->execute( $account->{'account_id'},
                             $account->{'account_name'},
                             $account->{'account_created'},
+                            $account->{'description'},
                             $account->{'protected'},
                             $account->{'verified'},
                             $account->{'friends_count'},
@@ -111,6 +112,8 @@ else {
                             $queued,
                             $datetime,
 
+                            $account->{'account_name'},
+                            $account->{'description'},
                             $account->{'protected'},
                             $account->{'verified'},
                             $account->{'friends_count'},
@@ -121,6 +124,11 @@ else {
                           );
       $sql_handle->finish;
     }
+
+    ## Dequeue new accounts less than a month old
+    $sql_handle = $dbh->prepare("UPDATE accounts SET queued=0 WHERE account_created >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
+    $sql_handle->execute;
+    $sql_handle->finish;
 
     print "$pid: Finished reloading queue.\n";
 

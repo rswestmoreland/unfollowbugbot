@@ -60,7 +60,12 @@ $api->{warning} = $settings->{api_warning} if defined $settings->{api_warning};
 
 ## Poll confirmed and send notifications
 
-my $sql_handle = $dbh->prepare("SELECT count(*) FROM friends WHERE confirmed=1 AND reported=0");
+## We want to group friend list sizes into buckets with staggering wait times
+my $wait_list = '( (friends_count <= 1000 AND message_sent < DATE_SUB(NOW(), INTERVAL 5 DAY))'
+              . ' OR (friends_count <= 2500 AND message_sent < DATE_SUB(NOW(), INTERVAL 10 DAY))'
+              . ' OR (friends_count <= 10000 AND message_sent < DATE_SUB(NOW(), INTERVAL 15 DAY)) )';
+
+my $sql_handle = $dbh->prepare("SELECT count(*) FROM accounts a INNER JOIN friends f ON a.account_id=f.account_id WHERE confirmed=1 AND reported=0 AND $wait_list");
 $sql_handle->execute or print "$pid: Unable to get confirmed count: " . $sql_handle->errstr;
 my ($confirmed) = $sql_handle->fetchrow_array();
 $sql_handle->finish;
@@ -69,7 +74,8 @@ if ( $confirmed ) {
 
   print "$pid: Confirmed has $confirmed accounts waiting to be notified\n";
 
-  $sql_handle = $dbh->prepare("SELECT a.account_id, account_name FROM accounts a LEFT JOIN friends f ON a.account_id=f.account_id WHERE confirmed=1 AND reported=0 GROUP BY a.account_id, account_name ORDER BY account_name");
+  ## We only want to process a batch of 250 accounts at a time, oldest queued accounts first
+  $sql_handle = $dbh->prepare("SELECT a.account_id, account_name FROM accounts a INNER JOIN friends f ON a.account_id=f.account_id WHERE confirmed=1 AND reported=0 AND $wait_list GROUP BY a.account_id, account_name ORDER BY date_queued, account_name LIMIT 250");
   $sql_handle->execute or print "$pid: Unable to query account: " . $sql_handle->errstr;
 
   my @summary;
@@ -101,11 +107,12 @@ if ( $confirmed ) {
       }
 
       ## Send DM to affected account
+      my $sent;
       if ( $message ) {
-        eval { $api->new_direct_messages_event($message, $account_id); };
+        $sent = send_message($api, $account_id, $message) // 0;
       }
 
-      unless ( $@ ) {
+      if ( $sent ) {
         my $friends = join(',', @all_unfollows);
 
         ## We have finished notifying the account, set reported flag
@@ -113,7 +120,12 @@ if ( $confirmed ) {
         $sql_handle2->execute($account_id, $datetime) or print "$pid: Unable to set reported: " . $sql_handle2->errstr;
         $sql_handle2->finish;
 
-        print "$pid: Sent message:\n$message\n";
+        ## Update account so we know when the last message was sent
+        $sql_handle2 = $dbh->prepare("UPDATE accounts SET message_sent=? WHERE account_id=?");
+        $sql_handle2->execute($datetime, $account_id) or print "$pid: Unable to set message sent: " . $sql_handle2->errstr;
+        $sql_handle2->finish;
+
+        print "$pid: Sent message at $datetime:\n$message\n";
         push(@summary, "$account_name: $all_unfollows_count");
       }
 
@@ -122,7 +134,7 @@ if ( $confirmed ) {
   }
 
   ## Send DM to bot master for metrics
-  eval { $api->new_direct_messages_event(join("\n", 'Unfollows notified:', @summary), $recipient_id); };
+  send_message($api, $recipient_id, join("\n", 'Unfollows notified:', @summary));
 
   $sql_handle->finish;
 

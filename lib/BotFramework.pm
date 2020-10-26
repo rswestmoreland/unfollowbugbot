@@ -18,6 +18,8 @@ use Twitter::API;
 
 our $pid = $$;
 
+our $bearer_token;
+
 
 sub set_lock {
 
@@ -110,6 +112,8 @@ sub connect_api_app {
 
   if ( my $token = $api->oauth2_token ) {
     $api->access_token($token);
+    ## RSW fixing a bug with direct messages
+    $bearer_token = $token;
   }
   else {
     die "Error requesting bearer token for api, quitting.\n";
@@ -163,6 +167,10 @@ sub check_rate_limits {
     followers => {
       remain => $resources->{'followers'}->{'/followers/ids'}->{'remaining'},
       reset  => $resources->{'followers'}->{'/followers/ids'}->{'reset'},
+    },
+    friendships => {
+      remain => $resources->{'friendships'}->{'/friendships/show'}->{'remaining'},
+      reset  => $resources->{'friendships'}->{'/friendships/show'}->{'reset'},
     },
     users => {
       remain => $resources->{'users'}->{'/users/lookup'}->{'remaining'},
@@ -266,6 +274,74 @@ sub get_followers {
   return @followers;
 }
 
+## Confirm missing friendship
+sub confirm_unfollow {
+  my ($api, $source_id, $target_id) = @_;
+
+  check_rate_limits($api, 'application', 0);
+
+  my $result;
+
+  RETRY: while ( 1 ) {
+
+    check_rate_limits($api, 'friendships');
+
+    eval { $result = $api->show_friendship({ source_id => $source_id, target_id => $target_id }); };
+
+    if ( $@ ) {
+      next RETRY if $@ =~ /^Rate limit exceeded/;
+
+      ## friend no longer exists!
+      return undef if $@ =~ /^User not found/;
+
+      print "$pid: Retrieval had failures: $@\n";
+      ## FIXME this might return false positives if there are unknown errors
+      die;
+    }
+
+    last RETRY;
+
+  }
+
+  return $result->{source}->{following} ? 0 : 1;
+}
+
+
+## Send direct message
+sub send_message {
+  my ($api, $user_id, $message) = @_;
+
+  check_rate_limits($api, 'application', 0);
+
+  RETRY: while ( 1 ) {
+
+    check_rate_limits($api, 'application');
+
+    if ( $bearer_token ) {
+      eval { $api->new_direct_messages_event($message, $user_id, { -token => $bearer_token } ); };
+    }
+    else  {
+      eval { $api->new_direct_messages_event($message, $user_id); };
+    }
+
+    if ( $@ ) {
+      if ( $@ =~ /^(Rate limit exceeded|420 Enhance Your Calm)/ ) {
+        print "$pid: Rate limit exceeded, sleeping for 60 seconds\n" if $api->{warning};
+        sleep 60;
+        next RETRY;
+      }
+      else {
+        print "$pid: Direct message had errors: $@\n";
+        return 0;
+      }
+    }
+
+    last RETRY;
+  }
+
+  return 1;
+}
+
 
 # Get account names associated with account ids
 sub get_names {
@@ -326,6 +402,7 @@ sub get_user_details {
           push @user_details, { account_id      => $user->{'id_str'},
                                 account_name    => $screen_name,
                                 account_created => $account_created,
+                                description     => $user->{'description'} // '',
                                 protected       => $user->{'protected'} ? 1 : 0,
                                 verified        => $user->{'verified'} ? 1 : 0,
                                 friends_count   => $user->{'friends_count'} // 0,
