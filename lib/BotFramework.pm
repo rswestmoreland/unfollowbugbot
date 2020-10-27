@@ -18,7 +18,7 @@ use Twitter::API;
 
 our $pid = $$;
 our $bearer_token;
-our $rate_limit_start = 10;
+our $rate_limit_start = 15;
 
 
 sub set_lock {
@@ -39,7 +39,7 @@ sub set_lock {
     my $lockpid = <$LOCK>;
     chomp $lockpid;
     if ( kill 0, $lockpid ) {
-      print "Lock exists and is valid, quitting.\n" and exit;
+      print "$pid: Lock exists and is valid, quitting.\n" and exit;
     }
     print "$pid: Lock file exists but is stale, resetting.\n";
     close $LOCK;
@@ -143,8 +143,8 @@ sub check_rate_limits {
     last RETRY if defined $resources && keys %{$resources};
 
     if ( $@ ) {
-      if ( $@ =~ /^(Rate limit exceeded|420 Enhance Your Calm)/ ) {
-        print "$pid: $1, sleeping for $retry_wait seconds\n" if $api->{warning};
+      if ( $@ =~ /^(?:Rate limit exceeded|420 Enhance Your Calm)/ ) {
+        print "$pid: Rate limit exceeded, sleeping for $retry_wait seconds\n" if $api->{warning};
         sleep $retry_wait;
         $retry_wait = int($retry_wait * 2);
         next RETRY;
@@ -178,19 +178,17 @@ sub check_rate_limits {
       remain => $resources->{'users'}->{'/users/lookup'}->{'remaining'},
       reset  => $resources->{'users'}->{'/users/lookup'}->{'reset'},
     },
-    direct_messages => {
-      remain => $resources->{'direct_messages'}->{'/direct_messages/events'}->{'/direct_messages/events/new'}->{'remaining'},
-      reset  => $resources->{'direct_messages'}->{'/direct_messages/events'}->{'/direct_messages/events/new'}->{'reset'},
-    },
   };
 
   my $reset = 0;
 
-  if ( $rates->{$resource}->{'remain'} == 0 ) {
-    $reset = $rates->{$resource}->{'reset'};
+  if ( defined $rates->{$resource} && defined $rates->{$resource}->{'remain'} ) {
+    if ( $rates->{$resource}->{'remain'} == 0 ) {
+      $reset = $rates->{$resource}->{'reset'};
+    }
   }
 
-  if ( $rates->{'application'}->{'remain'} == 0 ) {
+  if ( defined $rates->{'application'}->{'remain'} && $rates->{'application'}->{'remain'} == 0 ) {
     if ( $rates->{'application'}->{'reset'} > $reset ) {
       $reset = $rates->{'application'}->{'reset'};
       $resource = 'application';
@@ -288,6 +286,7 @@ sub confirm_unfollow {
 
   my $result;
 
+  my $retry_wait = $rate_limit_start;
   RETRY: while ( 1 ) {
 
     check_rate_limits($api, 'friendships');
@@ -295,14 +294,18 @@ sub confirm_unfollow {
     eval { $result = $api->show_friendship({ source_id => $source_id, target_id => $target_id }); };
 
     if ( $@ ) {
-      next RETRY if $@ =~ /^Rate limit exceeded/;
+      if ( $@ =~ /^(?:Rate limit exceeded|420 Enhance Your Calm)/ ) {
+        print "$pid: Rate limit exceeded, sleeping for $retry_wait seconds\n" if $api->{warning};
+        sleep $retry_wait;
+        $retry_wait = int($retry_wait * 2);
+        next RETRY;
+      }
 
       ## friend no longer exists!
       return undef if $@ =~ /^User not found/;
 
-      print "$pid: Retrieval had failures: $@\n";
-      ## FIXME this might return false positives if there are unknown errors
-      die;
+      print "$pid: Check friendship had errors: $@\n";
+      return 0;
     }
 
     last RETRY;
@@ -324,9 +327,10 @@ sub send_message {
 
   check_rate_limits($api, 'application', 0);
 
+  my $retry_wait = $rate_limit_start;
   RETRY: while ( 1 ) {
 
-    check_rate_limits($api, 'direct_messages');
+    check_rate_limits($api, 'application');
 
     if ( $bearer_token ) {
       eval { $api->new_direct_messages_event($message, $user_id, { -token => $bearer_token } ); };
@@ -336,7 +340,12 @@ sub send_message {
     }
 
     if ( $@ ) {
-      next RETRY if $@ =~ /^Rate limit exceeded/;
+      if ( $@ =~ /^(?:Rate limit exceeded|420 Enhance Your Calm)/ ) {
+        print "$pid: Rate limit exceeded, sleeping for $retry_wait seconds\n" if $api->{warning};
+        sleep $retry_wait;
+        $retry_wait = int($retry_wait * 2);
+        next RETRY;
+      }
 
       print "$pid: Direct message had errors: $@\n";
       return 0;

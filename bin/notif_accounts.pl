@@ -72,7 +72,11 @@ $sql_handle->finish;
 
 if ( $confirmed ) {
 
-  print "$pid: Confirmed has $confirmed accounts waiting to be notified\n";
+  my $status = "$pid: Confirmed has $confirmed accounts waiting to be notified\n";
+  print $status;
+
+  ## Send DM to bot master for status
+  send_message($api, $recipient_id, $status);
 
   ## We only want to process a batch of 250 accounts at a time, oldest queued accounts first
   $sql_handle = $dbh->prepare("SELECT a.account_id, account_name FROM accounts a INNER JOIN friends f ON a.account_id=f.account_id WHERE confirmed=1 AND reported=0 AND $wait_list GROUP BY a.account_id, account_name ORDER BY date_queued, account_name LIMIT 250");
@@ -100,6 +104,15 @@ if ( $confirmed ) {
         }
         else {
           print "$pid: Unfollows may be deleted accounts\n";
+          foreach my $friend ( @all_unfollows ) {
+            print "$pid: -> Removing $friend for $account_id\n";
+          }
+
+          my $friends = join(',', map { "'" . $_ . "'" } @all_unfollows);
+          my $sql_handle2 = $dbh->prepare("DELETE FROM friends WHERE account_id=? AND friend_id IN ($friends)");
+          foreach my $deleted ( @all_unfollows ) {
+            
+          }
         }
       }
       else {
@@ -113,7 +126,7 @@ if ( $confirmed ) {
       }
 
       if ( $sent ) {
-        my $friends = join(',', @all_unfollows);
+        my $friends = join(',', map { "'" . $_ . "'" } @all_unfollows);
 
         ## We have finished notifying the account, set reported flag
         my $sql_handle2 = $dbh->prepare("UPDATE friends SET reported=1, date_reported=? WHERE account_id=? AND friend_id IN ($friends)");
@@ -133,8 +146,9 @@ if ( $confirmed ) {
 
   }
 
+
   ## Send DM to bot master for metrics
-  send_message($api, $recipient_id, join("\n", 'Unfollows notified:', @summary));
+  send_message($api, $recipient_id, join("\n", "$pid: Unfollows notified: \n", @summary));
 
   $sql_handle->finish;
 
