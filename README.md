@@ -15,7 +15,7 @@ By following **[@unfollowbugbot](https://twitter.com/unfollowbugbot)** on Twitte
 
 **Limitations**
 - I will not work if your account is Protected, because I won't be able to see your friends or DM you
-- I skip accounts with 10,000+ friends
+- I skip accounts with 10,000+ followers
 - If you have 50 or more unfollows in one batch, I just summarize the count
 - I'm using the same API that might be responsible for the bug, so this is best effort and isn't perfect
 - The bug might cause you to unfollow me, oops
